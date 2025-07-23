@@ -1,10 +1,11 @@
 extern crate lovely_env_logger;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
 mod query;
 
 use alphamon_rs::device::cplus;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 
 /// CLI interface for Alpha Outback UPSes
@@ -12,9 +13,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Args {
-    /// UPS device path
+    /// UPS device path (valid for serial or usb-hid interface type)
     #[arg(short = 'p', long)]
-    path: String,
+    path: Option<String>,
+    /// UPS device VID:PID (valid only for usb-hid interface type)
+    #[arg(short = 'v', long)]
+    vid_pid: Option<String>,
     /// UPS interface type
     #[arg(short = 't', long = "type")]
     interface_type: InterfaceType,
@@ -36,10 +40,10 @@ enum Commands {
     },
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq)]
 enum InterfaceType {
     UsbHid,
-    Serial
+    Serial,
 }
 
 #[derive(Subcommand, Debug)]
@@ -70,9 +74,37 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
+    assert!(
+        args.vid_pid.is_none() || args.interface_type != InterfaceType::Serial,
+        "Serial port path cannot be specified by VID/PID"
+    );
+
+    assert_eq!(
+        args.vid_pid.is_some(),
+        args.path.is_none(),
+        "Specify only VID/PID or device path"
+    );
+
+    assert!(
+        args.vid_pid.as_ref().map(|vid_pid| vid_pid.len() == 9) != Some(false),
+        "VID/PID must have a length of 9 characters (format: `ffff:ffff` or `ffff/ffff`)"
+    );
+
     let mut dev: Box<dyn cplus::CPlusInterface> = match args.interface_type {
-        InterfaceType::UsbHid => Box::new(cplus::CPlusHidInterface::connect_with_path(args.path)?),
-        InterfaceType::Serial => Box::new(cplus::CPlusSerialInterface::connect(&args.path)?),
+        InterfaceType::UsbHid => Box::new(cplus::CPlusHidInterface::connect_with_path(
+            args.path.unwrap(),
+        )?),
+        InterfaceType::Serial => Box::new(
+            if let Some(vid_pid) = &args.vid_pid {
+                let (vid, pid) = (&vid_pid[0..4], &vid_pid[5..9]);
+                let (vid, pid) = (u16::from_str_radix(vid, 16)?, u16::from_str_radix(pid, 16)?);
+                cplus::CPlusHidInterface::connect_with_vid_pid(vid, pid)?
+            } else if let Some(device_path) = &args.path {
+                cplus::CPlusHidInterface::connect_with_path(device_path.to_string())?
+            } else {
+                bail!("Device must be either initialized with a device path or a VID/PID")
+            }
+        ),
     };
 
     match args.command {
@@ -81,7 +113,7 @@ async fn main() -> Result<()> {
         }
         Commands::Setting { command } => {
             error!("Unsupported command {command:?}");
-        },
+        }
     };
 
     Ok(())
