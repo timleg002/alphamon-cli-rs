@@ -91,10 +91,10 @@ async fn main() -> Result<()> {
     );
 
     let mut dev: Box<dyn cplus::CPlusInterface> = match args.interface_type {
-        InterfaceType::UsbHid => Box::new(cplus::CPlusHidInterface::connect_with_path(
-            args.path.unwrap(),
+        InterfaceType::Serial => Box::new(cplus::CPlusSerialInterface::connect(
+            &args.path.unwrap(),
         )?),
-        InterfaceType::Serial => Box::new(
+        InterfaceType::UsbHid => Box::new(
             if let Some(vid_pid) = &args.vid_pid {
                 let (vid, pid) = (&vid_pid[0..4], &vid_pid[5..9]);
                 let (vid, pid) = (u16::from_str_radix(vid, 16)?, u16::from_str_radix(pid, 16)?);
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
             } else if let Some(device_path) = &args.path {
                 cplus::CPlusHidInterface::connect_with_path(device_path.to_string())?
             } else {
-                bail!("Device must be either initialized with a device path or a VID/PID")
+                bail!("USB HID device must be either initialized with a device path or a VID/PID")
             }
         ),
     };
