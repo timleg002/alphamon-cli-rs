@@ -1,4 +1,4 @@
-### alphamon-cli-rs
+# alphamon-cli-rs
 
 CLI interface for Alpha Outback UPSes written in Rust. Based on the [alphamon-rs](https://github.com/timleg002/alphamon-rs) library. Works as an alternative to the proprietary Alphamon software by the manufacturer. 
 
